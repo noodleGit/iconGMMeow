@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Catfish Chess 😺</title>
+
+  <!-- REQUIRED by chessboard.js 1.0.0 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+
+  <!-- chessboard.js -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+
+  <!-- chess.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.13.4/chess.min.js"></script>
+
+  <style>
+    :root{--bg:#0b0f14;--text:#e7edf5;--muted:#9fb2c8;--border:rgba(255,255,255,.10);--ok:#34d399;--warn:#fbbf24;--bad:#fb7185;}
+    *{box-sizing:border-box}
+    body{
+      margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:radial-gradient(1000px 700px at 15% 0%, #10233a 0%, var(--bg) 60%);
+      color:var(--text);min-height:100svh;
+      padding:max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+              max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+      display:grid;place-items:center;
+    }
+    .app{width:min(1100px,100%);display:grid;grid-template-columns:1.15fr .85fr;gap:14px;align-items:start}
+    @media (max-width:900px){.app{grid-template-columns:1fr}}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+      border:1px solid var(--border);border-radius:16px;padding:14px;
+      backdrop-filter:blur(8px);box-shadow:0 10px 28px rgba(0,0,0,.35);
+    }
+    .header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .title{font-weight:800;display:flex;gap:10px;align-items:center}
+    .pill{font-size:12px;color:var(--muted);border:1px solid var(--border);padding:6px 10px;border-radius:999px;display:inline-flex;gap:8px;align-items:center;white-space:nowrap}
+    #engineDot{font-size:14px}
+    .grid{display:grid;gap:10px}
+
+    #boardWrap{width:100%;display:grid;place-items:center}
+    #board{
+      width:min(560px, 100%);
+      max-width:min(92vw, 560px);
+    }
+
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width:520px){.controls{grid-template-columns:1fr}}
+    label{font-size:12px;color:var(--muted);display:block;margin:0 0 6px}
+    select,button{
+      width:100%;background:rgba(0,0,0,.22);border:1px solid var(--border);
+      color:var(--text);border-radius:12px;padding:10px 12px;outline:none
+    }
+    button{font-weight:800;cursor:pointer}
+    button:active{transform:translateY(1px)}
+    .btnRow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    @media (max-width:520px){.btnRow{grid-template-columns:1fr}}
+    .status{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);color:var(--muted);font-size:13px;display:grid;gap:6px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Courier New",monospace;font-size:12px;color:var(--muted);word-break:break-all}
+    .row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .chat{display:grid;gap:10px;max-height:240px;overflow:auto;padding-right:6px}
+    @media (max-width:900px){.chat{max-height:200px}}
+    .bubble{border:1px solid var(--border);background:rgba(0,0,0,.22);border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.35}
+    .bubble.engine{border-color:rgba(125,211,252,.25)}
+    .bubble.you{border-color:rgba(52,211,153,.25)}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="card">
+      <div class="header">
+        <div class="title">😺 Catfish Chess</div>
+        <div class="pill"><span id="engineDot" class="warn">●</span><span id="engineState">Loading…</span></div>
+      </div>
+
+      <div id="boardWrap"><div id="board"></div></div>
+
+      <div class="status">
+        <div class="row"><div class="mono">FEN: <span id="fen"></span></div></div>
+        <div class="row">
+          <div class="mono">Turn: <span id="turn"></span></div>
+          <div class="mono">Eval: <span id="eval">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="header">
+        <div class="title">Controls</div>
+        <div class="pill">You: <span class="ok">White</span> • Engine: Black</div>
+      </div>
+
+      <div class="grid">
+        <div class="controls">
+          <div>
+            <label for="elo">Engine ELO</label>
+            <select id="elo">
+              <option value="800">800 (sleepy kitten)</option>
+              <option value="1000">1000</option>
+              <option value="1200">1200</option>
+              <option value="1400" selected>1400</option>
+              <option value="1600">1600</option>
+              <option value="1800">1800</option>
+              <option value="2000">2000</option>
+              <option value="2200">2200</option>
+              <option value="2400">2400 (boss cat)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="thinkTime">Think time (ms / move)</label>
+            <select id="thinkTime">
+              <option value="200">200</option>
+              <option value="400">400</option>
+              <option value="700" selected>700</option>
+              <option value="1200">1200</option>
+              <option value="2000">2000</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="btnRow">
+          <button id="newGame">New Game</button>
+          <button id="undo">Undo</button>
+          <button id="flip">Flip</button>
+        </div>
+
+        <div class="header" style="margin:8px 0 0;">
+          <div class="title">Cat Chat</div>
+          <div class="pill">meow-mode: <span class="ok">ON</span></div>
+        </div>
+
+        <div id="chat" class="chat" aria-live="polite"></div>
+        <div class="mono">Tip: Promotions auto-queen (cat likes queens).</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---------------- Cat talk 😺 ----------------
+  const CAT = {
+    greet:["mrrp! loaded. i’m the chess cat now.","meow! i’m awake. let’s play.","prrr… engine online. your pawns look tasty."],
+    thinking:["hmm… *tail swish* calculating pounce lines…","prrr… sniffing tactics…","mrow… herding pawns…"],
+    move:["meow. i moved.","mrrp! your king looks nervous.","prrr. reply delivered."],
+    win:["MEOWHAHA. checkmate. i demand tuna tribute.","purrfect finish. gg."],
+    lose:["mrr… i allowed that?? rematch?","meow… you win. i was testing you. totally."],
+    draw:["mrow. draw. we nap now.","prrr… equal. strategic lounging."],
+    illegal:["HISS! illegal move. try again, human.","mrow… not allowed. paws off."]
+  };
+  const pick = a => a[Math.floor(Math.random()*a.length)];
+  function say(role,text){
+    const chat=document.getElementById("chat");
+    const div=document.createElement("div");
+    div.className="bubble "+role;
+    div.textContent=text;
+    chat.appendChild(div);
+    chat.scrollTop=chat.scrollHeight;
+  }
+
+  // ---------------- UI helpers ----------------
+  const engineDot=document.getElementById("engineDot");
+  const engineState=document.getElementById("engineState");
+  function setEngineIndicator(state,text){
+    engineDot.className = (state==="ready")?"ok":(state==="error")?"bad":"warn";
+    engineDot.textContent="●";
+    engineState.textContent=text;
+  }
+
+  // ---------------- Chess ----------------
+  const game=new Chess();
+  let board=null;
+  const fenEl=document.getElementById("fen");
+  const turnEl=document.getElementById("turn");
+  const evalEl=document.getElementById("eval");
+
+  function updateUI(){
+    fenEl.textContent=game.fen();
+    turnEl.textContent=(game.turn()==="w")?"White (you)":"Black (cat engine)";
+  }
+  function resizeBoard(){
+    if(!board) return;
+    const el=document.getElementById("board");
+    const max=Math.min(560, Math.floor(window.innerWidth*0.92));
+    el.style.width=max+"px";
+    board.resize();
+  }
+
+  // ---------------- Stockfish (iOS-safe) ----------------
+  // ✅ Stockfish 11 asm.js: no wasm, works on Safari/Vercel reliably.
+  const STOCKFISH11_URL = "/stockfish.js";
+
+  let engine=null, engineReady=false, engineBusy=false;
+
+  function uci(cmd){ if(engine) engine.postMessage(cmd); }
+
+  function configureEngineStrength(){
+    const elo=parseInt(document.getElementById("elo").value,10);
+    uci("setoption name UCI_LimitStrength value true");
+    uci("setoption name UCI_Elo value "+elo);
+  }
+
+  function syncPositionToEngine(){
+    const history=game.history({verbose:false});
+    uci("position startpos moves "+history.join(" "));
+  }
+
+  function startEngine(){
+    setEngineIndicator("loading","Loading engine…");
+    engineReady=false; engineBusy=false;
+
+    try{
+      engine = new Worker(STOCKFISH11_URL);
+    }catch(e){
+      setEngineIndicator("error","Worker blocked");
+      say("engine","mrr… your browser blocked workers. try Safari/Chrome and disable strict blockers.");
+      console.error(e);
+      return;
+    }
+
+    const timeout = setTimeout(()=>{
+      if(!engineReady){
+        setEngineIndicator("error","Engine timeout");
+        say("engine","HISS… engine didn’t start. (CDN blocked?) Try another network or self-host stockfish.js.");
+      }
+    }, 8000);
+
+    engine.onmessage = (e)=>{
+      const line = (typeof e.data==="string") ? e.data : "";
+      if(line === "uciok"){
+        configureEngineStrength();
+        uci("isready");
+      }else if(line === "readyok"){
+        engineReady=true;
+        clearTimeout(timeout);
+        setEngineIndicator("ready","Ready");
+        say("engine", pick(CAT.greet));
+        syncPositionToEngine();
+        requestEngineMove();
+      }else if(line.startsWith("info ")){
+        const mMate=line.match(/score mate (-?\d+)/);
+        const mCp=line.match(/score cp (-?\d+)/);
+        if(mMate) evalEl.textContent="mate "+parseInt(mMate[1],10);
+        else if(mCp){ const cp=parseInt(mCp[1],10); evalEl.textContent=(cp/100).toFixed(2); }
+      }else if(line.startsWith("bestmove ")){
+        engineBusy=false;
+        const mv=line.split(" ")[1];
+        if(mv && mv!=="(none)") makeEngineMove(mv);
+      }
+    };
+
+    engine.onerror = (err)=>{
+      setEngineIndicator("error","Engine crashed");
+      say("engine","mrr… my brain crashed. refresh?");
+      console.error(err);
+    };
+
+    uci("uci");
+  }
+
+  function requestEngineMove(){
+    if(!engineReady || engineBusy) return;
+    if(game.game_over()) return;
+    if(game.turn()!=="b") return;
+
+    engineBusy=true;
+    say("engine", pick(CAT.thinking));
+    syncPositionToEngine();
+    const ms=parseInt(document.getElementById("thinkTime").value,10);
+    uci("go movetime "+ms);
+  }
+
+  function makeEngineMove(uciMove){
+    const from=uciMove.slice(0,2), to=uciMove.slice(2,4);
+    const promo = (uciMove.length>=5)? uciMove[4] : undefined;
+    const moveObj={from,to}; if(promo) moveObj.promotion=promo;
+    const mv=game.move(moveObj);
+    if(!mv){ say("engine","mrr… desync. resyncing."); syncPositionToEngine(); return; }
+    board.position(game.fen(), true);
+    updateUI();
+    say("engine", pick(CAT.move));
+    checkGameEnd();
+  }
+
+  // ---------------- Board interaction ----------------
+  function onDragStart(src,piece){
+    if(game.game_over()) return false;
+    if(game.turn()!=="w") return false;
+    if(piece.startsWith("b")) return false;
+  }
+  function onDrop(src,tgt){
+    const mv=game.move({from:src,to:tgt,promotion:"q"});
+    if(mv===null){ say("engine", pick(CAT.illegal)); return "snapback"; }
+    say("you","You played: "+mv.san);
+    updateUI();
+    checkGameEnd();
+    requestEngineMove();
+  }
+  function onSnapEnd(){ board.position(game.fen()); }
+
+  function checkGameEnd(){
+    if(!game.game_over()) return;
+    if(game.in_checkmate()){
+      const winner=(game.turn()==="w")?"Black":"White";
+      say("engine", winner==="Black"? pick(CAT.win) : pick(CAT.lose));
+    }else{
+      say("engine", pick(CAT.draw));
+    }
+  }
+
+  // ---------------- Controls ----------------
+  document.getElementById("newGame").addEventListener("click", ()=>{
+    game.reset(); board.start(); updateUI(); evalEl.textContent="—";
+    engineBusy=false; if(engineReady) syncPositionToEngine();
+    say("engine","meow! new game.");
+    requestEngineMove();
+  });
+  document.getElementById("undo").addEventListener("click", ()=>{
+    if(game.history().length===0) return;
+    if(game.turn()==="b"){ game.undo(); }
+    else { game.undo(); if(game.history().length>0) game.undo(); }
+    board.position(game.fen(), true); updateUI(); evalEl.textContent="—";
+    engineBusy=false; if(engineReady) syncPositionToEngine();
+    say("engine","mrrp. time travel achieved.");
+  });
+  document.getElementById("flip").addEventListener("click", ()=>{
+    board.flip(); resizeBoard(); say("engine","mrow… gravity rotated.");
+  });
+  document.getElementById("elo").addEventListener("change", ()=>{
+    if(!engineReady) return;
+    configureEngineStrength(); uci("isready");
+    say("engine","prrr… adjusting brain power.");
+  });
+  document.getElementById("thinkTime").addEventListener("change", ()=>{
+    say("engine","meow. thinking "+document.getElementById("thinkTime").value+"ms.");
+  });
+
+  // ---------------- Boot ----------------
+  function boot(){
+    board = Chessboard("board", {draggable:true, position:"start", onDragStart, onDrop, onSnapEnd});
+    updateUI();
+    say("engine","booting… stretching whiskers…");
+    resizeBoard();
+    window.addEventListener("resize", resizeBoard, {passive:true});
+    window.addEventListener("orientationchange", ()=>setTimeout(resizeBoard,150), {passive:true});
+    startEngine();
+  }
+  boot();
+</script>
+</body>
+</html>
