@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Catfish Chess 😺 (Stockfish with Selectable ELO)</title>
+
+  <!-- chessboard.js -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+
+  <!-- chess.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.13.4/chess.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #111826;
+      --text: #e7edf5;
+      --muted: #9fb2c8;
+      --accent: #7dd3fc;
+      --danger: #fb7185;
+      --ok: #34d399;
+      --border: rgba(255,255,255,0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 20% 0%, #10233a 0%, var(--bg) 50%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .app {
+      width: min(1100px, 100%);
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 750;
+      letter-spacing: 0.2px;
+    }
+    .pill {
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 520px) {
+      .controls { grid-template-columns: 1fr; }
+    }
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 6px;
+    }
+    select, button, input[type="range"] {
+      width: 100%;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 12px;
+      outline: none;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 650;
+      transition: transform 0.05s ease, border-color 0.2s ease;
+    }
+    button:hover { border-color: rgba(125,211,252,0.45); }
+    button:active { transform: translateY(1px); }
+    .btnRow {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 520px) {
+      .btnRow { grid-template-columns: 1fr; }
+    }
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .chat {
+      display: grid;
+      gap: 10px;
+      max-height: 240px;
+      overflow: auto;
+      padding-right: 6px;
+    }
+    .bubble {
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.22);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .bubble.engine {
+      border-color: rgba(125,211,252,0.25);
+    }
+    .bubble.you {
+      border-color: rgba(52,211,153,0.25);
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .ok { color: var(--ok); }
+    .danger { color: var(--danger); }
+    #board {
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="card">
+      <div class="header">
+        <div class="title">😺 Catfish Chess <span class="pill">Stockfish in your browser</span></div>
+        <div class="pill"><span id="engineDot">●</span> <span id="engineState">Booting…</span></div>
+      </div>
+
+      <div id="board"></div>
+
+      <div class="status">
+        <div class="row">
+          <div class="mono">FEN: <span id="fen" class="mono"></span></div>
+        </div>
+        <div class="row">
+          <div class="mono">Turn: <span id="turn" class="mono"></span></div>
+          <div class="mono">Eval: <span id="eval" class="mono">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="header">
+        <div class="title">Controls</div>
+        <div class="pill">You are <span class="ok">White</span> • Engine is <span class="accent">Black</span></div>
+      </div>
+
+      <div class="grid">
+        <div class="controls">
+          <div>
+            <label for="elo">Engine ELO</label>
+            <select id="elo">
+              <option value="800">800 (Sleepy kitten)</option>
+              <option value="1000">1000</option>
+              <option value="1200">1200</option>
+              <option value="1400" selected>1400</option>
+              <option value="1600">1600</option>
+              <option value="1800">1800</option>
+              <option value="2000">2000</option>
+              <option value="2200">2200</option>
+              <option value="2400">2400 (Boss cat)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="thinkTime">Engine think time (ms per move)</label>
+            <select id="thinkTime">
+              <option value="200">200</option>
+              <option value="400">400</option>
+              <option value="700" selected>700</option>
+              <option value="1200">1200</option>
+              <option value="2000">2000</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="btnRow">
+          <button id="newGame">New Game</button>
+          <button id="undo">Undo</button>
+          <button id="flip">Flip Board</button>
+        </div>
+
+        <div class="header" style="margin: 6px 0 0;">
+          <div class="title">Cat Engine Chat</div>
+          <div class="pill">meow-mode: <span class="ok">ON</span></div>
+        </div>
+
+        <div id="chat" class="chat" aria-live="polite"></div>
+        <div class="mono">Tip: Drag a piece. Promotions auto-queen (cat likes queens).</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ----------------------------
+    // Utilities: Cat-ish dialogue 😺
+    // ----------------------------
+    const CAT = {
+      greet: [
+        "mrrp! hello human. i will be your totally serious chess cat today.",
+        "meow! let’s play. please provide snacks and blunders.",
+        "prrr… i’m ready. i saw your opening in a dream."
+      ],
+      thinking: [
+        "hmm… *tail swish* calculating pounce lines…",
+        "prrr… i’m sniffing tactics…",
+        "mrow… give me a second, i’m herding pawns…"
+      ],
+      move: [
+        "meow. i moved. do you accept my terms (and treats)?",
+        "mrrp! your king smells nervous.",
+        "prrr. nice. i reply with violence (in chess)."
+      ],
+      win: [
+        "MEOWHAHA. checkmate. i demand tuna tribute.",
+        "purrfect finish. your king is in the litter box now."
+      ],
+      lose: [
+        "mrr… i… i allowed that?? suspicious. rematch?",
+        "meow… you win. i will pretend i was testing you."
+      ],
+      draw: [
+        "mrow. draw. we both nap now.",
+        "prrr… equal. i will call it ‘strategic lounging’."
+      ],
+      illegal: [
+        "HISS! illegal move. paws off the pieces.",
+        "mrow… that move is not allowed. try again, human."
+      ],
+      random: [
+        "i knocked a piece off the table mentally.",
+        "your bishop looks like a fancy ear.",
+        "openings are just zoomies with rules."
+      ]
+    };
+
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+    function say(role, text) {
+      const chat = document.getElementById("chat");
+      const div = document.createElement("div");
+      div.className = "bubble " + role;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    // ----------------------------
+    // Chess + Board setup
+    // ----------------------------
+    const game = new Chess();
+    let board = null;
+
+    const fenEl = document.getElementById("fen");
+    const turnEl = document.getElementById("turn");
+    const evalEl = document.getElementById("eval");
+
+    function updateUI() {
+      fenEl.textContent = game.fen();
+      turnEl.textContent = (game.turn() === "w") ? "White (you)" : "Black (cat engine)";
+    }
+
+    // ----------------------------
+    // Stockfish Worker
+    // ----------------------------
+    // Stockfish CDN worker (JS/WASM build). If one CDN is blocked, swap URL.
+    const STOCKFISH_URL = "https://cdn.jsdelivr.net/npm/stockfish@16.1.0/src/stockfish.js";
+
+    let engine = null;
+    let engineReady = false;
+    let lastBestMove = null;
+
+    const engineDot = document.getElementById("engineDot");
+    const engineState = document.getElementById("engineState");
+
+    function setEngineIndicator(ready, text) {
+      engineDot.style.color = ready ? "#34d399" : "#fb7185";
+      engineState.textContent = text;
+    }
+
+    function uci(cmd) {
+      if (!engine) return;
+      engine.postMessage(cmd);
+    }
+
+    function startEngine() {
+      engine = new Worker(STOCKFISH_URL);
+      engineReady = false;
+      lastBestMove = null;
+
+      engine.onmessage = (e) => {
+        const line = (typeof e.data === "string") ? e.data : "";
+        // console.log("SF:", line);
+
+        if (line === "uciok") {
+          // set options after UCI handshake
+          configureEngineStrength();
+          uci("isready");
+        } else if (line === "readyok") {
+          engineReady = true;
+          setEngineIndicator(true, "Ready");
+          say("engine", pick(CAT.greet));
+          // sync position
+          syncPositionToEngine();
+        } else if (line.startsWith("info ")) {
+          // Try to show a lightweight eval (cp or mate)
+          // Examples: "info depth 12 score cp 34 ..."
+          const mCp = line.match(/score cp (-?\d+)/);
+          const mMate = line.match(/score mate (-?\d+)/);
+          if (mMate) {
+            const mateIn = parseInt(mMate[1], 10);
+            evalEl.textContent = `mate ${mateIn}`;
+          } else if (mCp) {
+            const cp = parseInt(mCp[1], 10);
+            // cp is from side to move in engine's perspective; we’ll just display raw.
+            evalEl.textContent = (cp / 100).toFixed(2);
+          }
+        } else if (line.startsWith("bestmove ")) {
+          const parts = line.split(" ");
+          lastBestMove = parts[1];
+          if (lastBestMove && lastBestMove !== "(none)") {
+            makeEngineMove(lastBestMove);
+          }
+        }
+      };
+
+      // UCI init
+      setEngineIndicator(false, "Booting…");
+      uci("uci");
+    }
+
+    function configureEngineStrength() {
+      const elo = parseInt(document.getElementById("elo").value, 10);
+
+      // Enable strength limiting and set Elo.
+      // Stockfish supports UCI_LimitStrength and UCI_Elo.
+      uci("setoption name UCI_LimitStrength value true");
+      uci(`setoption name UCI_Elo value ${elo}`);
+
+      // Optional: Reduce randomness a little so low ELO still feels coherent
+      // but can still blunder. You can tweak if you want.
+      // uci("setoption name Skill Level value 10");
+    }
+
+    function syncPositionToEngine() {
+      // Send moves list from start position to current.
+      const history = game.history({ verbose: false });
+      uci("position startpos moves " + history.join(" "));
+    }
+
+    // ----------------------------
+    // Engine move pipeline
+    // ----------------------------
+    let engineBusy = false;
+
+    function requestEngineMove() {
+      if (!engineReady) return;
+      if (engineBusy) return;
+      if (game.game_over()) return;
+      if (game.turn() !== "b") return; // engine plays black
+
+      engineBusy = true;
+      say("engine", pick(CAT.thinking));
+
+      syncPositionToEngine();
+
+      const thinkTime = parseInt(document.getElementById("thinkTime").value, 10);
+      // time-based search (simple, consistent for browser)
+      uci(`go movetime ${thinkTime}`);
+    }
+
+    function makeEngineMove(uciMove) {
+      engineBusy = false;
+
+      // Convert UCI move like "e2e4" or promotions "e7e8q"
+      const from = uciMove.slice(0, 2);
+      const to = uciMove.slice(2, 4);
+      const promo = uciMove.length >= 5 ? uciMove[4] : undefined;
+
+      const moveObj = { from, to };
+      if (promo) moveObj.promotion = promo;
+
+      const move = game.move(moveObj);
+
+      if (!move) {
+        // If something went wrong, resync and try again once
+        say("engine", "mrr… i got confused. resyncing position. 🐾");
+        syncPositionToEngine();
+        return;
+      }
+
+      board.position(game.fen(), true);
+      updateUI();
+      say("engine", pick(CAT.move) + (Math.random() < 0.25 ? " " + pick(CAT.random) : ""));
+
+      checkGameEnd();
+    }
+
+    // ----------------------------
+    // Player interaction
+    // ----------------------------
+    function onDragStart(source, piece) {
+      // Only allow dragging white pieces, and if game not over
+      if (game.game_over()) return false;
+      if (piece.startsWith("b")) return false;
+      if (game.turn() !== "w") return false;
+    }
+
+    function onDrop(source, target) {
+      // Attempt move; auto-queen promotion
+      const move = game.move({
+        from: source,
+        to: target,
+        promotion: "q"
+      });
+
+      if (move === null) {
+        say("engine", pick(CAT.illegal));
+        return "snapback";
+      }
+
+      say("you", `You played: ${move.san}`);
+      updateUI();
+
+      checkGameEnd();
+
+      // Engine responds
+      requestEngineMove();
+    }
+
+    function onSnapEnd() {
+      board.position(game.fen());
+    }
+
+    // ----------------------------
+    // Game end handling
+    // ----------------------------
+    function checkGameEnd() {
+      if (!game.game_over()) return;
+
+      if (game.in_checkmate()) {
+        // side to move is checkmated, so winner is opposite
+        const winner = (game.turn() === "w") ? "Black" : "White";
+        if (winner === "Black") say("engine", pick(CAT.win));
+        else say("engine", pick(CAT.lose));
+      } else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition() || game.insufficient_material()) {
+        say("engine", pick(CAT.draw));
+      }
+    }
+
+    // ----------------------------
+    // Buttons + controls
+    // ----------------------------
+    document.getElementById("newGame").addEventListener("click", () => {
+      game.reset();
+      board.start();
+      updateUI();
+      evalEl.textContent = "—";
+      say("engine", "meow! new game. i promise nothing (except chaos).");
+      engineBusy = false;
+      syncPositionToEngine();
+    });
+
+    document.getElementById("undo").addEventListener("click", () => {
+      // Undo last two ply: engine + player if possible
+      if (game.history().length === 0) return;
+
+      // If it's black to move (engine turn), undo player last move only.
+      if (game.turn() === "b") {
+        game.undo();
+      } else {
+        // It's white to move; undo engine move then player move if exists
+        game.undo();
+        if (game.history().length > 0) game.undo();
+      }
+
+      board.position(game.fen(), true);
+      updateUI();
+      evalEl.textContent = "—";
+      engineBusy = false;
+      syncPositionToEngine();
+      say("engine", "mrrp. rewinding time. i definitely meant that.");
+    });
+
+    document.getElementById("flip").addEventListener("click", () => {
+      board.flip();
+      say("engine", "meow— the board rotated. my whiskers are dizzy.");
+    });
+
+    document.getElementById("elo").addEventListener("change", () => {
+      if (!engineReady) return;
+      configureEngineStrength();
+      uci("isready");
+      say("engine", "prrr… adjusting brain power slider…");
+    });
+
+    document.getElementById("thinkTime").addEventListener("change", () => {
+      say("engine", "mrow. i will think " + document.getElementById("thinkTime").value + "ms per move. efficient cat.");
+    });
+
+    // ----------------------------
+    // Boot
+    // ----------------------------
+    function boot() {
+      board = Chessboard("board", {
+        draggable: true,
+        position: "start",
+        onDragStart,
+        onDrop,
+        onSnapEnd
+      });
+
+      updateUI();
+      say("engine", "booting my tiny chess brain… brrt…");
+
+      startEngine();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
