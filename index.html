@@ -188,104 +188,11 @@
     board.resize();
   }
 
-  // ---------------- Stockfish worker (iOS-safe) ----------------
+  // ---------------- Stockfish (iOS-safe) ----------------
+  // ✅ Stockfish 11 asm.js: no wasm, works on Safari/Vercel reliably.
+  const STOCKFISH11_URL = "https://cdn.jsdelivr.net/npm/stockfish@11.0.0/src/stockfish.js";
+
   let engine=null, engineReady=false, engineBusy=false;
-
-  // We load stockfish.js inside the worker using importScripts, and give it an absolute wasm path.
-  const STOCKFISH_CANDIDATES = [
-    "https://cdn.jsdelivr.net/npm/stockfish@16.1.0/src/stockfish.js",
-    "https://unpkg.com/stockfish@16.1.0/src/stockfish.js"
-  ];
-
-  async function tryFetch(url){
-    const r = await fetch(url, {cache:"force-cache"});
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    // just verifying it is reachable
-    return url;
-  }
-
-  function makeStockfishWorker(stockfishJsUrl){
-    const base = stockfishJsUrl.substring(0, stockfishJsUrl.lastIndexOf("/") + 1);
-    const workerCode = `
-      self.Module = {
-        locateFile: function(path, prefix) {
-          // ensure stockfish.wasm resolves correctly
-          return "${base}" + path;
-        }
-      };
-      self.importScripts("${stockfishJsUrl}");
-      // Stockfish will now run and communicate via postMessage/onmessage (UCI)
-    `;
-    const blob = new Blob([workerCode], {type:"text/javascript"});
-    const blobURL = URL.createObjectURL(blob);
-    return new Worker(blobURL);
-  }
-
-  async function startEngine(){
-    setEngineIndicator("loading","Loading engine…");
-    engineReady=false; engineBusy=false;
-
-    let chosen=null, lastErr=null;
-    for(const url of STOCKFISH_CANDIDATES){
-      try{
-        setEngineIndicator("loading","Checking… ("+new URL(url).hostname+")");
-        chosen = await tryFetch(url);
-        break;
-      }catch(e){ lastErr=e; }
-    }
-    if(!chosen){
-      setEngineIndicator("error","Engine blocked");
-      say("engine","mrr… your network blocked my brain download. try another network or self-host stockfish.");
-      console.error(lastErr);
-      return;
-    }
-
-    setEngineIndicator("loading","Starting…");
-    engine = makeStockfishWorker(chosen);
-    hookEngine(engine);
-
-    // safety timeout so you never get stuck forever
-    const t = setTimeout(() => {
-      if(!engineReady){
-        setEngineIndicator("error","Engine timeout");
-        say("engine","HISS… i timed out loading. your CDN might be blocked. self-host stockfish.js + stockfish.wasm.");
-      }
-    }, 8000);
-
-    uci("uci");
-    // clear timeout once ready
-    engine._readyTimeout = t;
-  }
-
-  function hookEngine(w){
-    w.onmessage = (e)=>{
-      const line = (typeof e.data==="string")? e.data : "";
-      if(line==="uciok"){
-        configureEngineStrength();
-        uci("isready");
-      }else if(line==="readyok"){
-        engineReady=true;
-        clearTimeout(engine._readyTimeout);
-        setEngineIndicator("ready","Ready");
-        say("engine", pick(CAT.greet));
-        syncPositionToEngine();
-      }else if(line.startsWith("info ")){
-        const mMate=line.match(/score mate (-?\\d+)/);
-        const mCp=line.match(/score cp (-?\\d+)/);
-        if(mMate) evalEl.textContent="mate "+parseInt(mMate[1],10);
-        else if(mCp){ const cp=parseInt(mCp[1],10); evalEl.textContent=(cp/100).toFixed(2); }
-      }else if(line.startsWith("bestmove ")){
-        engineBusy=false;
-        const mv=line.split(" ")[1];
-        if(mv && mv!=="(none)") makeEngineMove(mv);
-      }
-    };
-    w.onerror = (err)=>{
-      setEngineIndicator("error","Engine crashed");
-      console.error(err);
-      say("engine","mrr… my worker crashed. refresh?");
-    };
-  }
 
   function uci(cmd){ if(engine) engine.postMessage(cmd); }
 
@@ -300,10 +207,64 @@
     uci("position startpos moves "+history.join(" "));
   }
 
+  function startEngine(){
+    setEngineIndicator("loading","Loading engine…");
+    engineReady=false; engineBusy=false;
+
+    try{
+      engine = new Worker(STOCKFISH11_URL);
+    }catch(e){
+      setEngineIndicator("error","Worker blocked");
+      say("engine","mrr… your browser blocked workers. try Safari/Chrome and disable strict blockers.");
+      console.error(e);
+      return;
+    }
+
+    const timeout = setTimeout(()=>{
+      if(!engineReady){
+        setEngineIndicator("error","Engine timeout");
+        say("engine","HISS… engine didn’t start. (CDN blocked?) Try another network or self-host stockfish.js.");
+      }
+    }, 8000);
+
+    engine.onmessage = (e)=>{
+      const line = (typeof e.data==="string") ? e.data : "";
+      if(line === "uciok"){
+        configureEngineStrength();
+        uci("isready");
+      }else if(line === "readyok"){
+        engineReady=true;
+        clearTimeout(timeout);
+        setEngineIndicator("ready","Ready");
+        say("engine", pick(CAT.greet));
+        syncPositionToEngine();
+        requestEngineMove();
+      }else if(line.startsWith("info ")){
+        const mMate=line.match(/score mate (-?\d+)/);
+        const mCp=line.match(/score cp (-?\d+)/);
+        if(mMate) evalEl.textContent="mate "+parseInt(mMate[1],10);
+        else if(mCp){ const cp=parseInt(mCp[1],10); evalEl.textContent=(cp/100).toFixed(2); }
+      }else if(line.startsWith("bestmove ")){
+        engineBusy=false;
+        const mv=line.split(" ")[1];
+        if(mv && mv!=="(none)") makeEngineMove(mv);
+      }
+    };
+
+    engine.onerror = (err)=>{
+      setEngineIndicator("error","Engine crashed");
+      say("engine","mrr… my brain crashed. refresh?");
+      console.error(err);
+    };
+
+    uci("uci");
+  }
+
   function requestEngineMove(){
     if(!engineReady || engineBusy) return;
     if(game.game_over()) return;
     if(game.turn()!=="b") return;
+
     engineBusy=true;
     say("engine", pick(CAT.thinking));
     syncPositionToEngine();
@@ -354,6 +315,7 @@
     game.reset(); board.start(); updateUI(); evalEl.textContent="—";
     engineBusy=false; if(engineReady) syncPositionToEngine();
     say("engine","meow! new game.");
+    requestEngineMove();
   });
   document.getElementById("undo").addEventListener("click", ()=>{
     if(game.history().length===0) return;
