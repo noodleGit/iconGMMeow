@@ -213,6 +213,8 @@
 
     try{
       engine = new Worker(STOCKFISH11_URL);
+      engine.postMessage("uci");
+
     }catch(e){
       setEngineIndicator("error","Worker blocked");
       say("engine","mrr… your browser blocked workers. try Safari/Chrome and disable strict blockers.");
